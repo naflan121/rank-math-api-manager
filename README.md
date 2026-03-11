@@ -478,3 +478,13 @@ If you discover a bug or have other problems with the plugin, you can:
 
 **License**: [GPL v3](LICENSE.md) - Devora AS  
 **Last Updated**: July 2025
+
+---
+
+<div align="center">
+
+**Developed by Devora AS ☔️**
+
+_Brave • Innovative • Responsible • Creative • Different_
+
+</div>

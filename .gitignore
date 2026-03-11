@@ -70,6 +70,14 @@ wp-content/plugins/hello.php
 *.zip
 *.tar.gz
 *.tar.bz2
+/deploy.sh
+/.deployignore
+agent-skills/
+*.code-workspace
+transcripts/
+agent-transcripts/
+local-notes/
+.notes/
 
 # Testing
 coverage/

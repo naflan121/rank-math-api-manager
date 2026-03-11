@@ -48,11 +48,17 @@ jobs:
           rm -rf rank-math-api-manager/.github/ 2>/dev/null || true
           rm -rf rank-math-api-manager/tests/ 2>/dev/null || true
           rm -rf rank-math-api-manager/.cursor/ 2>/dev/null || true
+          rm -rf rank-math-api-manager/agent-skills/ 2>/dev/null || true
+          rm -rf rank-math-api-manager/transcripts/ 2>/dev/null || true
+          rm -rf rank-math-api-manager/agent-transcripts/ 2>/dev/null || true
+          rm -rf rank-math-api-manager/local-notes/ 2>/dev/null || true
+          rm -rf rank-math-api-manager/.notes/ 2>/dev/null || true
           rm -rf rank-math-api-manager/node_modules/ 2>/dev/null || true
           rm -f rank-math-api-manager/.DS_Store 2>/dev/null || true
           rm -f rank-math-api-manager/TODO*.md 2>/dev/null || true
           rm -f rank-math-api-manager/.env* 2>/dev/null || true
           rm -f rank-math-api-manager/.gitignore 2>/dev/null || true
+          rm -f rank-math-api-manager/*.code-workspace 2>/dev/null || true
 
           # Create ZIP file with WordPress-compatible name
           zip -r rank-math-api-manager.zip rank-math-api-manager/
@@ -60,6 +66,14 @@ jobs:
           # Verify ZIP structure
           echo "📦 ZIP Contents:"
           unzip -l rank-math-api-manager.zip | head -20
+
+          # Verify forbidden local artifacts are not present
+          if unzip -Z1 rank-math-api-manager.zip | grep -E '(^|/)\.cursor/|(^|/)agent-skills/|\.code-workspace$|(^|/)transcripts/|(^|/)agent-transcripts/|(^|/)local-notes/|(^|/)\.notes/'; then
+            echo "❌ Forbidden local artifacts detected in release ZIP"
+            exit 1
+          fi
+
+          echo "✅ Packaging exclusions verified: no local agent artifacts in release ZIP"
 
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1

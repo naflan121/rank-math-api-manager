@@ -573,9 +573,24 @@ class Rank_Math_API_Manager_Extended {
 			'permission_callback' => [ $this, 'check_update_permission' ],
 			'args'                => [
 				'post_id' => [
+					'type'              => 'integer',
 					'required'          => true,
+					'sanitize_callback' => 'absint',
 					'validate_callback' => function ( $param ) {
-						return is_numeric( $param ) && get_post( $param );
+						$post_id = absint( $param );
+						$post    = get_post( $post_id );
+
+						if ( ! $post ) {
+							return false;
+						}
+
+						$allowed_post_types = array( 'post' );
+
+						if ( class_exists( 'WooCommerce' ) ) {
+							$allowed_post_types[] = 'product';
+						}
+
+						return in_array( $post->post_type, $allowed_post_types, true );
 					}
 				],
 				'rank_math_title'         => [ 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ],
@@ -622,10 +637,37 @@ class Rank_Math_API_Manager_Extended {
 	/**
 	 * Check update permission
 	 *
-	 * @return bool True if user can edit posts
+	 * @param WP_REST_Request $request Request object.
+	 * @return bool|WP_Error True if user can edit the requested post.
 	 */
-	public function check_update_permission() {
-		return current_user_can( 'edit_posts' );
+	public function check_update_permission( WP_REST_Request $request ) {
+		$post_id = absint( $request->get_param( 'post_id' ) );
+
+		if ( ! is_user_logged_in() ) {
+			return new WP_Error(
+				'rest_forbidden',
+				__( 'Authentication required.', 'rank-math-api-manager' ),
+				[ 'status' => 401 ]
+			);
+		}
+
+		if ( ! $post_id ) {
+			return new WP_Error(
+				'invalid_post_id',
+				__( 'A valid post ID is required.', 'rank-math-api-manager' ),
+				[ 'status' => 400 ]
+			);
+		}
+
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			return new WP_Error(
+				'rest_forbidden',
+				__( 'You cannot edit this post.', 'rank-math-api-manager' ),
+				[ 'status' => 403 ]
+			);
+		}
+
+		return true;
 	}
 
 	/**

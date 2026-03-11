@@ -33,9 +33,11 @@ This extension enhances the WordPress REST API with custom endpoints that allow 
 
 Updates Rank Math SEO metadata for a specific post or product.
 
+**Supported post types:** Only **posts** (`post`) and **products** (`product`, if WooCommerce is active). Page IDs are not accepted and will return a validation error.
+
 **Parameters:**
 
-- `post_id` (required) - ID of the post/product
+- `post_id` (required) - ID of the post or product (must be a post or product, not a page)
 - `rank_math_title` (optional) - SEO title
 - `rank_math_description` (optional) - SEO description
 - `rank_math_canonical_url` (optional) - Canonical URL
@@ -46,9 +48,11 @@ Updates Rank Math SEO metadata for a specific post or product.
 ```bash
 curl -X POST "https://example.com/wp-json/rank-math-api/v1/update-meta" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -H "Authorization: Basic [base64-encoded-credentials]" \
-  -d "post_id=123&rank_math_title=Optimized title&rank_math_description=SEO description&rank_math_focus_keyword=keyword"
+  --user "USERNAME:APPLICATION_PASSWORD" \
+  -d "post_id=14&rank_math_title=Optimized title&rank_math_description=SEO description&rank_math_focus_keyword=keyword"
 ```
+
+Replace `USERNAME` and `APPLICATION_PASSWORD` with your WordPress username and [Application Password](https://wordpress.org/documentation/article/application-passwords/). Use a real **post** (or product) ID; page IDs are not supported.
 
 **Response:**
 
@@ -381,7 +385,7 @@ A: Check that the Application Password is correctly configured and that the user
 A: Verify that the plugin is active and that the WordPress REST API is available.
 
 **Q: I get 400 Bad Request errors?**
-A: Check that the `post_id` exists and that all parameters are correctly formatted.
+A: Ensure `post_id` is a **post** or **product** (pages are not supported). Check that the post exists and that all parameters are correctly formatted.
 
 **Q: WooCommerce integration doesn't work?**
 A: Check that WooCommerce is installed and activated.
@@ -412,6 +416,7 @@ A: Yes, webhook support is planned for phase 3.
    - Verify that the REST API is available
 
 3. **400 Bad Request**
+   - Ensure `post_id` is a **post** or **product** (not a page)
    - Check that `post_id` exists
    - Validate that all parameters are correctly formatted
 

@@ -70,15 +70,35 @@ POST /wp-json/rank-math-api/v1/update-meta
 
 | Parameter                 | Type    | Required | Description                          | Example                                                                            |
 | ------------------------- | ------- | -------- | ------------------------------------ | ---------------------------------------------------------------------------------- |
-| `post_id`                 | integer | Yes      | ID of the post or product            | `123`                                                                              |
+| `post_id`                 | integer | Yes      | ID of the post or product            | `14`                                                                               |
 | `rank_math_title`         | string  | No       | SEO title (max 60 characters)        | `"How to Optimize WordPress SEO"`                                                  |
 | `rank_math_description`   | string  | No       | SEO description (max 160 characters) | `"Learn the best practices for optimizing your WordPress site for search engines"` |
 | `rank_math_canonical_url` | URL     | No       | Canonical URL                        | `"https://example.com/post-url"`                                                   |
 | `rank_math_focus_keyword` | string  | No       | Primary focus keyword                | `"WordPress SEO optimization"`                                                     |
 
+**Supported post types:** Only **posts** (`post`) and **products** (`product`, if WooCommerce is active). The `post_id` must refer to one of these. Page IDs and other post types will return `rest_invalid_param`.
+
 #### Request Examples
 
-##### cURL
+##### Quick test (local or production)
+
+Use a real **post** (or product) ID; page IDs are not supported. Replace the URL and credentials with your site and [Application Password](https://wordpress.org/documentation/article/application-passwords/).
+
+```bash
+# Local (e.g. Local by Flywheel)
+curl -X POST "http://devora-ny.local/wp-json/rank-math-api/v1/update-meta" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --user "YOUR_USERNAME:YOUR_APPLICATION_PASSWORD" \
+  -d "post_id=14&rank_math_title=Test title&rank_math_description=Test description&rank_math_focus_keyword=test keyword"
+
+# Production
+curl -X POST "https://your-site.com/wp-json/rank-math-api/v1/update-meta" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --user "YOUR_USERNAME:YOUR_APPLICATION_PASSWORD" \
+  -d "post_id=14&rank_math_title=Test title&rank_math_description=Test description&rank_math_focus_keyword=test keyword"
+```
+
+##### cURL (with Base64 Authorization header)
 
 ```bash
 curl -X POST "https://your-site.com/wp-json/rank-math-api/v1/update-meta" \
@@ -235,6 +255,21 @@ except Exception as e:
 
 ###### 400 Bad Request
 
+Invalid `post_id` (e.g. not a post/product, or parameter invalid):
+
+```json
+{
+  "code": "rest_invalid_param",
+  "message": "Invalid parameter(s): post_id",
+  "data": {
+    "status": 400,
+    "params": { "post_id": "Invalid parameter." }
+  }
+}
+```
+
+No metadata was updated:
+
 ```json
 {
   "code": "no_update",
@@ -310,12 +345,13 @@ The plugin uses WordPress's default CORS settings. For enhanced security, consid
 
 ### Common Error Codes
 
-| Error Code            | HTTP Status | Description                                       | Solution                               |
-| --------------------- | ----------- | ------------------------------------------------- | -------------------------------------- |
-| `rest_forbidden`      | 401         | Authentication failed or insufficient permissions | Check credentials and user permissions |
-| `rest_post_not_found` | 404         | Post ID does not exist                            | Verify the post ID is correct          |
-| `no_update`           | 400         | No metadata was updated                           | Ensure at least one field is provided  |
-| `rest_no_route`       | 404         | Endpoint not found                                | Verify the plugin is activated         |
+| Error Code            | HTTP Status | Description                                       | Solution                                                                 |
+| --------------------- | ----------- | ------------------------------------------------- | ------------------------------------------------------------------------ |
+| `rest_forbidden`      | 401         | Authentication failed or insufficient permissions | Check credentials and user permissions                                    |
+| `rest_post_not_found` | 404         | Post ID does not exist                            | Verify the post ID is correct                                            |
+| `rest_invalid_param`  | 400         | Invalid `post_id` (e.g. page ID or wrong type)    | Use a **post** or **product** ID; pages are not supported                |
+| `no_update`           | 400         | No metadata was updated                           | Ensure at least one field is provided                                    |
+| `rest_no_route`       | 404         | Endpoint not found                                | Verify the plugin is activated                                           |
 
 ### Error Handling Examples
 
@@ -453,12 +489,23 @@ Expected response:
 
 ### Test Valid Request
 
+Use a real **post** (or product) ID. Page IDs will return `rest_invalid_param`.
+
 ```bash
-# Test with valid credentials and data
+# Using --user (curl encodes credentials as Basic auth)
+curl -X POST "https://your-site.com/wp-json/rank-math-api/v1/update-meta" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --user "USERNAME:APPLICATION_PASSWORD" \
+  -d "post_id=14&rank_math_title=Test Title&rank_math_description=Test description&rank_math_focus_keyword=test"
+```
+
+Alternative with explicit Basic header:
+
+```bash
 curl -X POST "https://your-site.com/wp-json/rank-math-api/v1/update-meta" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -H "Authorization: Basic [base64-encoded-credentials]" \
-  -d "post_id=123&rank_math_title=Test Title"
+  -d "post_id=14&rank_math_title=Test Title"
 ```
 
 Expected response:

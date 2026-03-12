@@ -599,6 +599,7 @@ Monitor API usage and performance:
 
 | Version | Changes                                      |
 | ------- | -------------------------------------------- |
+| 1.0.9.1 | Case-insensitive updater fix, reusable admin notices, privacy-documented anonymous telemetry groundwork |
 | 1.0.9   | WordPress 6.9.3 and Rank Math 1.0.265 compatibility verification, REST hardening |
 | 1.0.8   | Auto-update system, enhanced validation      |
 | 1.0.7   | Dependency checking, Plugin Check compliance |
@@ -636,4 +637,4 @@ For API-related issues:
 ---
 
 **Last Updated**: March 2026  
-**Version**: 1.0.9
+**Version**: 1.0.9.1

@@ -4,7 +4,7 @@ Tags: seo, rank-math, api, rest-api, automation
 Requires at least: 5.0
 Tested up to: 6.9.3
 Requires PHP: 7.4
-Stable tag: 1.0.9
+Stable tag: 1.0.9.1
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -50,6 +50,11 @@ This extension is currently distributed via GitHub only.
 
 == Changelog ==
 
+= 1.0.9.1 =
+* Fixed mixed-case GitHub release URL validation so update detection remains reliable
+* Added reusable admin notices for dependency issues, legacy folder-name guidance, and telemetry privacy messaging
+* Added privacy-documented anonymous telemetry with opt-out controls and scheduled heartbeat support
+
 = 1.0.9 =
 * Verified compatibility with WordPress 6.9.3
 * Verified compatibility with Rank Math SEO 1.0.265
@@ -74,6 +79,9 @@ This extension is currently distributed via GitHub only.
 * Core SEO field support
 
 == Upgrade Notice ==
+
+= 1.0.9.1 =
+Fixes GitHub release URL matching for update detection and adds admin guidance plus privacy-documented anonymous telemetry controls.
 
 = 1.0.9 =
 Adds verified WordPress 6.9.3 / Rank Math 1.0.265 compatibility and REST hardening improvements.

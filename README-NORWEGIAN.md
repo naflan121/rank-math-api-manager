@@ -9,7 +9,7 @@
 ## 📋 Oversikt
 
 **Plugin Name**: Rank Math API Manager  
-**Version**: 1.0.9
+**Version**: 1.0.9.1
 **Author**: Devora AS  
 **Description**: WordPress-plugin som eksponerer REST API-endepunkter for å oppdatere Rank Math SEO-metadata programmatisk.
 
@@ -63,9 +63,13 @@ curl -X POST "https://example.com/wp-json/rank-math-api/v1/update-meta" \
 
 ### 1. Plugin-installasjon
 
-1. Last opp `rank-math-api-manager.php` til `/wp-content/plugins/rank-math-api-manager/`
+1. Last opp plugin-ZIPen eller den utpakkede plugin-mappen til `/wp-content/plugins/rank-math-api-manager/`
 2. Aktiver plugin-et i WordPress admin-panel
 3. Verifiser at plugin-et er aktivt
+
+### 1.1 Oppdaterings- og pakkenavn
+
+Nye releases publiseres som `rank-math-api-manager.zip` og pakkes ut til mappen `rank-math-api-manager/`. Hvis nettstedet ditt fortsatt kjører en eldre installasjon fra `Rank Math API Manager-plugin-kopi`, vil plugin-et fortsatt fungere og kunne finne oppdateringer, men plugin-et viser nå et admin-varsel med anbefalt engangsreinstallasjon for å normalisere mappenavnet.
 
 ### 2. Tillatelser
 
@@ -114,6 +118,19 @@ Dette plugin-et er spesielt designet for å fungere med Devora sin n8n workflow 
 - Validerer at `post_id` eksisterer
 - Sanitizerer SEO-tekstfelt med `wp_filter_nohtml_kses()`
 - Validerer URL-er med `esc_url_raw()`
+
+## 📡 Telemetri og personvern
+
+Versjon `1.0.9.1` introduserer et personvern-dokumentert grunnlag for anonym telemetri for å overvake oppdateringshelse og kompatibilitet. Plugin-et sender kun:
+
+- Anonym nettsted-ID
+- Plugin-slug og versjon
+- WordPress-versjon
+- PHP-versjon
+- Hendelsestype (`activate`, `deactivate`, `heartbeat`)
+- Tidsstempel
+
+Det sendes **ikke** nettsted-URL, e-postadresser, brukernavn, SEO-innhold eller autentiseringsdata. Telemetri er aktivert for denne minimale payloaden og kan slås av fra admin-varselet som vises til administratorer. Se `docs/telemetry-and-privacy.md` for full oversikt.
 
 ## 🔧 Tekniske Detaljer
 
@@ -366,7 +383,10 @@ A: Nei, plugin-et logger ikke sensitive data.
 A: Plugin-et kan oppdateres via WordPress admin-panel eller ved å laste opp ny versjon manuelt.
 
 **Q: Er det automatiske oppdateringer?**
-A: Automatiske oppdateringer fra GitHub er planlagt for fremtidige versjoner.
+A: Ja. Plugin-et integrerer med WordPress sitt native oppdateringssystem og sjekker siste publiserte GitHub-release og `rank-math-api-manager.zip`-asseten. Nettsteder som kjører `1.0.8` eller `1.0.9` skal kunne se `1.0.9.1` som tilgjengelig oppdatering under **WP Admin -> Utvidelser** når WordPress har oppdatert plugin-transientene, så lenge releasen er publisert, ZIP-asseten finnes, og nettstedet kan nå GitHub API-et. Varslet kan være forsinket fordi release-data caches i opptil 1 time og GitHub-sjekker rate-begrenses til 5 minutter.
+
+**Q: Hva hvis oppdateringen ikke vises ennå?**
+A: Bekreft at GitHub-releasen er publisert og inneholder `rank-math-api-manager.zip`, og slett deretter plugin-transientene for oppdatering og GitHub-cache før du kjører **Oppdateringer -> Sjekk på nytt**. Hvis installasjonen fortsatt bruker `Rank Math API Manager-plugin-kopi`, blokkerer ikke det selve oppdateringssjekken, men admin-varselet vil anbefale en engangsreinstallasjon for å normalisere mappenavnet.
 
 **Q: Hvordan sjekker jeg om plugin-et fungerer?**
 A: Test API-endepunktet med en enkel POST-forespørsel til `/wp-json/rank-math-api/v1/update-meta`.
@@ -476,4 +496,4 @@ Hvis du oppdager en bug eller har andre problemer med plugin-et, kan du:
 ---
 
 **Lisens**: [GPL v3](LICENSE.md) - Devora AS  
-**Sist oppdatert**: Juli 2025
+**Sist oppdatert**: Mars 2026

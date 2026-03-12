@@ -3,7 +3,7 @@
  * Plugin Name: Rank Math API Manager
  * Plugin URI: https://devora.no/plugins/rankmath-api-manager
  * Description: A WordPress extension that manages the update of Rank Math metadata (SEO Title, SEO Description, Canonical URL, Focus Keyword) via the REST API for WordPress posts and WooCommerce products.
- * Version: 1.0.9
+ * Version: 1.0.9.1
  * Author: Devora AS
  * Author URI: https://devora.no
  * License: GPL v3 or later
@@ -29,7 +29,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define plugin constants
-define('RANK_MATH_API_VERSION', '1.0.9');
+define('RANK_MATH_API_VERSION', '1.0.9.1');
 define('RANK_MATH_API_PLUGIN_FILE', __FILE__);
 define('RANK_MATH_API_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('RANK_MATH_API_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -137,6 +137,9 @@ class Rank_Math_API_Manager_Extended {
 		// Monitor plugin activation/deactivation
 		add_action( 'activated_plugin', [ $this, 'on_plugin_activated' ] );
 		add_action( 'deactivated_plugin', [ $this, 'on_plugin_deactivated' ] );
+		add_action( 'admin_init', [ $this, 'handle_notice_actions' ] );
+		add_action( 'admin_init', [ $this, 'register_plugin_settings' ] );
+		add_action( 'rank_math_api_telemetry_heartbeat', [ $this, 'send_scheduled_telemetry' ] );
 		
 		// Auto-update system hooks
 		add_filter( 'pre_set_site_transient_update_plugins', [ $this, 'check_for_update' ] );
@@ -149,8 +152,8 @@ class Rank_Math_API_Manager_Extended {
 			add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin_scripts' ] );
 		}
 		
-		// Admin notices for dependency issues
-		add_action( 'admin_notices', [ $this, 'display_dependency_notices' ] );
+		// Admin notices and operator actions.
+		add_action( 'admin_notices', [ $this, 'render_admin_notices' ] );
 	}
 
 	/**
@@ -313,106 +316,654 @@ class Rank_Math_API_Manager_Extended {
 		
 		// Update status if it changed
 		if ( $current_status !== $dependencies_met ) {
-			update_option( 'rank_math_api_dependencies_status', $dependencies_met );
-			
-			// If dependencies are no longer met, deactivate functionality
-			if ( ! $dependencies_met ) {
-				$this->handle_dependencies_missing();
+			update_option( 'rank_math_api_dependencies_status', $dependencies_met, false );
+		}
+	}
+
+	/**
+	 * Get the plugin directory slug from the active installation.
+	 *
+	 * @since 1.0.9.1
+	 * @return string
+	 */
+	private function get_plugin_directory_slug() {
+		return dirname( plugin_basename( RANK_MATH_API_PLUGIN_FILE ) );
+	}
+
+	/**
+	 * Check whether the plugin is installed in the expected directory.
+	 *
+	 * @since 1.0.9.1
+	 * @return bool
+	 */
+	private function is_standard_plugin_directory() {
+		return 'rank-math-api-manager' === $this->get_plugin_directory_slug();
+	}
+
+	/**
+	 * Register plugin settings.
+	 *
+	 * @since 1.0.9.1
+	 */
+	public function register_plugin_settings() {
+		register_setting(
+			'rank_math_api_manager',
+			'rank_math_api_telemetry_settings',
+			array(
+				'type'              => 'array',
+				'sanitize_callback' => array( $this, 'sanitize_telemetry_settings' ),
+				'default'           => $this->get_default_telemetry_settings(),
+				'show_in_rest'      => false,
+			)
+		);
+	}
+
+	/**
+	 * Get the default telemetry settings.
+	 *
+	 * @since 1.0.9.1
+	 * @return array
+	 */
+	private function get_default_telemetry_settings() {
+		return array(
+			'enabled' => true,
+			'site_id' => '',
+		);
+	}
+
+	/**
+	 * Sanitize telemetry settings before persisting them.
+	 *
+	 * @since 1.0.9.1
+	 * @param mixed $settings Raw settings.
+	 * @return array
+	 */
+	public function sanitize_telemetry_settings( $settings ) {
+		$current_settings = $this->get_telemetry_settings();
+		$settings         = is_array( $settings ) ? $settings : array();
+
+		$current_settings['enabled'] = ! empty( $settings['enabled'] );
+
+		if ( empty( $current_settings['site_id'] ) ) {
+			$current_settings['site_id'] = wp_generate_uuid4();
+		}
+
+		return $current_settings;
+	}
+
+	/**
+	 * Get the persisted telemetry settings merged with defaults.
+	 *
+	 * @since 1.0.9.1
+	 * @return array
+	 */
+	private function get_telemetry_settings() {
+		$settings = get_option( 'rank_math_api_telemetry_settings', array() );
+		$settings = is_array( $settings ) ? $settings : array();
+
+		return wp_parse_args( $settings, $this->get_default_telemetry_settings() );
+	}
+
+	/**
+	 * Persist telemetry settings.
+	 *
+	 * @since 1.0.9.1
+	 * @param array $settings Settings to save.
+	 */
+	private function update_telemetry_settings( array $settings ) {
+		update_option( 'rank_math_api_telemetry_settings', $settings, false );
+	}
+
+	/**
+	 * Ensure the anonymous telemetry site ID exists.
+	 *
+	 * @since 1.0.9.1
+	 * @return string
+	 */
+	private function ensure_telemetry_site_id() {
+		$settings = $this->get_telemetry_settings();
+
+		if ( empty( $settings['site_id'] ) ) {
+			$settings['site_id'] = wp_generate_uuid4();
+			$this->update_telemetry_settings( $settings );
+		}
+
+		return $settings['site_id'];
+	}
+
+	/**
+	 * Schedule the recurring telemetry heartbeat.
+	 *
+	 * @since 1.0.9.1
+	 */
+	private function schedule_telemetry_heartbeat() {
+		if ( ! wp_next_scheduled( 'rank_math_api_telemetry_heartbeat' ) ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'rank_math_api_telemetry_heartbeat' );
+		}
+	}
+
+	/**
+	 * Get the current notice event queue.
+	 *
+	 * @since 1.0.9.1
+	 * @return array
+	 */
+	private function get_notice_events() {
+		$events = get_option( 'rank_math_api_notice_events', array() );
+		return is_array( $events ) ? $events : array();
+	}
+
+	/**
+	 * Queue a transient admin notice event.
+	 *
+	 * @since 1.0.9.1
+	 * @param string $notice_id Notice identifier.
+	 */
+	public function queue_notice_event( $notice_id ) {
+		$notice_id = sanitize_key( $notice_id );
+
+		if ( '' === $notice_id ) {
+			return;
+		}
+
+		$events               = $this->get_notice_events();
+		$events[ $notice_id ] = time();
+		update_option( 'rank_math_api_notice_events', $events, false );
+	}
+
+	/**
+	 * Check whether a transient notice event is queued.
+	 *
+	 * @since 1.0.9.1
+	 * @param string $notice_id Notice identifier.
+	 * @return bool
+	 */
+	private function has_notice_event( $notice_id ) {
+		$events = $this->get_notice_events();
+		return isset( $events[ $notice_id ] );
+	}
+
+	/**
+	 * Consume a transient notice event after it has been displayed.
+	 *
+	 * @since 1.0.9.1
+	 * @param string $notice_id Notice identifier.
+	 */
+	private function consume_notice_event( $notice_id ) {
+		$events = $this->get_notice_events();
+
+		if ( isset( $events[ $notice_id ] ) ) {
+			unset( $events[ $notice_id ] );
+			update_option( 'rank_math_api_notice_events', $events, false );
+		}
+	}
+
+	/**
+	 * Get site-wide dismissed notices.
+	 *
+	 * @since 1.0.9.1
+	 * @return array
+	 */
+	private function get_site_dismissed_notices() {
+		$dismissed_notices = get_option( 'rank_math_api_dismissed_notices', array() );
+		return is_array( $dismissed_notices ) ? $dismissed_notices : array();
+	}
+
+	/**
+	 * Mark a site-wide notice as dismissed.
+	 *
+	 * @since 1.0.9.1
+	 * @param string $notice_id Notice identifier.
+	 */
+	private function dismiss_notice_for_site( $notice_id ) {
+		$dismissed_notices               = $this->get_site_dismissed_notices();
+		$dismissed_notices[ $notice_id ] = RANK_MATH_API_VERSION;
+		update_option( 'rank_math_api_dismissed_notices', $dismissed_notices, false );
+	}
+
+	/**
+	 * Check whether a site-wide notice has been dismissed.
+	 *
+	 * @since 1.0.9.1
+	 * @param string $notice_id Notice identifier.
+	 * @return bool
+	 */
+	private function is_notice_dismissed_for_site( $notice_id ) {
+		$dismissed_notices = $this->get_site_dismissed_notices();
+		return isset( $dismissed_notices[ $notice_id ] );
+	}
+
+	/**
+	 * Get the user-meta key used for notice dismissals.
+	 *
+	 * @since 1.0.9.1
+	 * @param string $notice_id Notice identifier.
+	 * @return string
+	 */
+	private function get_user_notice_meta_key( $notice_id ) {
+		return 'rank_math_api_dismissed_' . sanitize_key( $notice_id );
+	}
+
+	/**
+	 * Mark a notice as dismissed for the current user.
+	 *
+	 * @since 1.0.9.1
+	 * @param string $notice_id Notice identifier.
+	 */
+	private function dismiss_notice_for_user( $notice_id ) {
+		$user_id = get_current_user_id();
+
+		if ( $user_id ) {
+			update_user_meta( $user_id, $this->get_user_notice_meta_key( $notice_id ), RANK_MATH_API_VERSION );
+		}
+	}
+
+	/**
+	 * Check whether the current user has dismissed a notice.
+	 *
+	 * @since 1.0.9.1
+	 * @param string $notice_id Notice identifier.
+	 * @return bool
+	 */
+	private function is_notice_dismissed_for_user( $notice_id ) {
+		$user_id = get_current_user_id();
+
+		if ( ! $user_id ) {
+			return false;
+		}
+
+		return '' !== (string) get_user_meta( $user_id, $this->get_user_notice_meta_key( $notice_id ), true );
+	}
+
+	/**
+	 * Build a URL for a protected notice action.
+	 *
+	 * @since 1.0.9.1
+	 * @param string $notice_action Action identifier.
+	 * @param string $notice_id     Notice identifier.
+	 * @return string
+	 */
+	private function get_notice_action_url( $notice_action, $notice_id ) {
+		$url = add_query_arg(
+			array(
+				'rank_math_api_notice_action' => sanitize_key( $notice_action ),
+				'rank_math_api_notice_id'     => sanitize_key( $notice_id ),
+			),
+			admin_url( 'plugins.php' )
+		);
+
+		return wp_nonce_url( $url, 'rank_math_api_notice_action', 'rank_math_api_notice_nonce' );
+	}
+
+	/**
+	 * Handle notice actions coming from WordPress admin links.
+	 *
+	 * @since 1.0.9.1
+	 */
+	public function handle_notice_actions() {
+		if ( ! is_admin() || ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$notice_action = isset( $_GET['rank_math_api_notice_action'] ) ? sanitize_key( wp_unslash( $_GET['rank_math_api_notice_action'] ) ) : '';
+		$notice_id     = isset( $_GET['rank_math_api_notice_id'] ) ? sanitize_key( wp_unslash( $_GET['rank_math_api_notice_id'] ) ) : '';
+		$nonce         = isset( $_GET['rank_math_api_notice_nonce'] ) ? sanitize_text_field( wp_unslash( $_GET['rank_math_api_notice_nonce'] ) ) : '';
+
+		if ( '' === $notice_action || '' === $notice_id || ! wp_verify_nonce( $nonce, 'rank_math_api_notice_action' ) ) {
+			return;
+		}
+
+		switch ( $notice_action ) {
+			case 'dismiss':
+				if ( 'folder_name_notice' === $notice_id ) {
+					$this->dismiss_notice_for_user( $notice_id );
+				} else {
+					$this->dismiss_notice_for_site( $notice_id );
+				}
+				break;
+
+			case 'telemetry_opt_out':
+				$settings            = $this->get_telemetry_settings();
+				$settings['enabled'] = false;
+				$this->update_telemetry_settings( $settings );
+				$this->dismiss_notice_for_site( 'telemetry_privacy_notice' );
+				$this->queue_notice_event( 'telemetry_disabled' );
+				break;
+
+			case 'telemetry_keep_enabled':
+				$this->dismiss_notice_for_site( 'telemetry_privacy_notice' );
+				$this->queue_notice_event( 'telemetry_enabled' );
+				break;
+		}
+
+		wp_safe_redirect(
+			remove_query_arg(
+				array(
+					'rank_math_api_notice_action',
+					'rank_math_api_notice_id',
+					'rank_math_api_notice_nonce',
+				),
+				wp_get_referer() ? wp_get_referer() : admin_url( 'plugins.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Determine whether the current screen should render a notice.
+	 *
+	 * @since 1.0.9.1
+	 * @param array $notice Notice definition.
+	 * @return bool
+	 */
+	private function should_render_notice_on_current_screen( array $notice ) {
+		if ( empty( $notice['screen_ids'] ) ) {
+			return true;
+		}
+
+		if ( ! function_exists( 'get_current_screen' ) ) {
+			return true;
+		}
+
+		$screen = get_current_screen();
+
+		if ( ! $screen || empty( $screen->id ) ) {
+			return true;
+		}
+
+		return in_array( $screen->id, $notice['screen_ids'], true );
+	}
+
+	/**
+	 * Build the active admin notices for the current request.
+	 *
+	 * @since 1.0.9.1
+	 * @return array
+	 */
+	private function get_active_admin_notices() {
+		$notices            = array();
+		$telemetry_settings = $this->get_telemetry_settings();
+
+		if ( ! $this->are_dependencies_met() ) {
+			$notices[] = array(
+				'id'         => 'dependency_issues',
+				'type'       => 'error',
+				'message'    => $this->get_dependency_notice_markup(),
+				'screen_ids' => array(),
+			);
+		}
+
+		if ( $this->has_notice_event( 'dependency_restored' ) ) {
+			$notices[] = array(
+				'id'         => 'dependency_restored',
+				'type'       => 'success',
+				'message'    => '<p><strong>' . esc_html__( 'Rank Math API Manager', 'rank-math-api-manager' ) . '</strong>: ' . esc_html__( 'Dependencies are now met and plugin functionality is enabled again.', 'rank-math-api-manager' ) . '</p>',
+				'screen_ids' => array( 'plugins', 'dashboard' ),
+				'consume'    => true,
+			);
+		}
+
+		if ( $this->has_notice_event( 'dependency_deactivated' ) ) {
+			$notices[] = array(
+				'id'         => 'dependency_deactivated',
+				'type'       => 'warning',
+				'message'    => '<p><strong>' . esc_html__( 'Rank Math API Manager', 'rank-math-api-manager' ) . '</strong>: ' . esc_html__( 'A required dependency has been deactivated. Rank Math API Manager functionality is currently disabled.', 'rank-math-api-manager' ) . '</p>',
+				'screen_ids' => array( 'plugins', 'dashboard' ),
+				'consume'    => true,
+			);
+		}
+
+		if ( $this->has_notice_event( 'telemetry_enabled' ) ) {
+			$notices[] = array(
+				'id'         => 'telemetry_enabled',
+				'type'       => 'success',
+				'message'    => '<p><strong>' . esc_html__( 'Rank Math API Manager', 'rank-math-api-manager' ) . '</strong>: ' . esc_html__( 'Anonymous telemetry remains enabled. Only the documented minimal payload is sent to Devora Update API.', 'rank-math-api-manager' ) . '</p>',
+				'screen_ids' => array( 'plugins', 'dashboard' ),
+				'consume'    => true,
+			);
+		}
+
+		if ( $this->has_notice_event( 'telemetry_disabled' ) ) {
+			$notices[] = array(
+				'id'         => 'telemetry_disabled',
+				'type'       => 'success',
+				'message'    => '<p><strong>' . esc_html__( 'Rank Math API Manager', 'rank-math-api-manager' ) . '</strong>: ' . esc_html__( 'Anonymous telemetry has been disabled for this site.', 'rank-math-api-manager' ) . '</p>',
+				'screen_ids' => array( 'plugins', 'dashboard' ),
+				'consume'    => true,
+			);
+		}
+
+		if ( ! $this->is_standard_plugin_directory() && ! $this->is_notice_dismissed_for_user( 'folder_name_notice' ) ) {
+			$notices[] = array(
+				'id'         => 'folder_name_notice',
+				'type'       => 'warning',
+				'message'    => $this->get_folder_name_notice_markup(),
+				'screen_ids' => array( 'plugins', 'dashboard' ),
+				'actions'    => array(
+					array(
+						'label' => __( 'Dismiss', 'rank-math-api-manager' ),
+						'url'   => $this->get_notice_action_url( 'dismiss', 'folder_name_notice' ),
+						'class' => 'button button-secondary',
+					),
+				),
+			);
+		}
+
+		if ( ! $this->is_notice_dismissed_for_site( 'telemetry_privacy_notice' ) && ! empty( $telemetry_settings['enabled'] ) ) {
+			$notices[] = array(
+				'id'         => 'telemetry_privacy_notice',
+				'type'       => 'info',
+				'message'    => $this->get_telemetry_notice_markup(),
+				'screen_ids' => array( 'plugins', 'dashboard' ),
+				'actions'    => array(
+					array(
+						'label' => __( 'Keep enabled', 'rank-math-api-manager' ),
+						'url'   => $this->get_notice_action_url( 'telemetry_keep_enabled', 'telemetry_privacy_notice' ),
+						'class' => 'button button-primary',
+					),
+					array(
+						'label' => __( 'Disable anonymous telemetry', 'rank-math-api-manager' ),
+						'url'   => $this->get_notice_action_url( 'telemetry_opt_out', 'telemetry_privacy_notice' ),
+						'class' => 'button button-secondary',
+					),
+				),
+			);
+		}
+
+		return $notices;
+	}
+
+	/**
+	 * Render active admin notices through a shared renderer.
+	 *
+	 * @since 1.0.9.1
+	 */
+	public function render_admin_notices() {
+		if ( ! is_admin() || ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		foreach ( $this->get_active_admin_notices() as $notice ) {
+			if ( ! $this->should_render_notice_on_current_screen( $notice ) ) {
+				continue;
+			}
+
+			$this->render_admin_notice( $notice );
+
+			if ( ! empty( $notice['consume'] ) ) {
+				$this->consume_notice_event( $notice['id'] );
 			}
 		}
 	}
 
 	/**
-	 * Handle missing dependencies
+	 * Render a single admin notice.
 	 *
-	 * @since 1.0.7
+	 * @since 1.0.9.1
+	 * @param array $notice Notice definition.
 	 */
-	private function handle_dependencies_missing() {
-		// Add admin notice
-		add_action( 'admin_notices', function() {
-			echo '<div class="notice notice-error"><p>';
-			echo '<strong>Rank Math API Manager:</strong> ';
-			echo esc_html__( 'Required dependencies are missing. Please install and activate Rank Math SEO plugin.', 'rank-math-api-manager' );
-			echo '</p></div>';
-		});
+	private function render_admin_notice( array $notice ) {
+		$classes = array(
+			'notice',
+			'notice-' . ( isset( $notice['type'] ) ? sanitize_html_class( $notice['type'] ) : 'info' ),
+			'rank-math-api-notice',
+		);
+
+		echo '<div class="' . esc_attr( implode( ' ', $classes ) ) . '">';
+		echo wp_kses_post( $notice['message'] );
+
+		if ( ! empty( $notice['actions'] ) && is_array( $notice['actions'] ) ) {
+			echo '<p class="rank-math-api-notice-actions">';
+
+			foreach ( $notice['actions'] as $action ) {
+				$label = isset( $action['label'] ) ? $action['label'] : '';
+				$url   = isset( $action['url'] ) ? $action['url'] : '';
+				$class = isset( $action['class'] ) ? $action['class'] : 'button button-secondary';
+
+				echo '<a class="' . esc_attr( $class ) . '" href="' . esc_url( $url ) . '">' . esc_html( $label ) . '</a> ';
+			}
+
+			echo '</p>';
+		}
+
+		echo '</div>';
 	}
 
 	/**
-	 * Display dependency notices in admin
+	 * Build the dependency notice markup.
 	 *
-	 * @since 1.0.7
+	 * @since 1.0.9.1
+	 * @return string
 	 */
-	public function display_dependency_notices() {
+	private function get_dependency_notice_markup() {
 		$status = $this->get_dependency_status();
-		
-		if ( ! $status['dependencies_met'] ) {
-			echo '<div class="notice notice-error">';
-			echo '<p><strong>' . esc_html__( 'Rank Math API Manager - Dependency Issues', 'rank-math-api-manager' ) . '</strong></p>';
-			
-			// Show missing plugins
-			if ( ! empty( $status['missing_plugins'] ) ) {
-				echo '<p>' . esc_html__( 'The following required plugins are missing or inactive:', 'rank-math-api-manager' ) . '</p>';
-				echo '<ul>';
-				
-				foreach ( $status['missing_plugins'] as $plugin ) {
-					echo '<li>';
-					echo '<strong>' . esc_html( $plugin['name'] ) . '</strong> - ';
-					echo esc_html( $plugin['description'] );
-					
-					if ( $this->is_plugin_installed( $plugin['file'] ) ) {
-						echo ' <a href="' . esc_url( admin_url( 'plugins.php' ) ) . '">' . esc_html__( 'Activate Plugin', 'rank-math-api-manager' ) . '</a>';
-					} else {
-						echo ' <a href="' . esc_url( $plugin['url'] ) . '" target="_blank">' . esc_html__( 'Install Plugin', 'rank-math-api-manager' ) . '</a>';
-					}
-					
-					echo '</li>';
-				}
-				
-				echo '</ul>';
-			}
-			
-			// Show configuration issues
-			if ( ! empty( $status['configuration_issues'] ) ) {
-				echo '<p>' . esc_html__( 'Configuration issues detected:', 'rank-math-api-manager' ) . '</p>';
-				echo '<ul>';
-				
-				foreach ( $status['configuration_issues'] as $issue ) {
-					echo '<li>';
-					echo '<strong>' . esc_html( $issue['plugin'] ) . '</strong>: ';
-					echo esc_html( $issue['issue'] );
-					
-					// Show debug information if available
-					if ( isset( $issue['debug'] ) && is_array( $issue['debug'] ) ) {
-						echo '<br><small><strong>Debug Info:</strong> ';
-						$debug_parts = array();
-						foreach ( $issue['debug'] as $key => $value ) {
-							$debug_parts[] = $key . ': ' . ( is_bool( $value ) ? ( $value ? 'Yes' : 'No' ) : $value );
-						}
-						echo esc_html( implode( ', ', $debug_parts ) );
-						echo '</small>';
-					}
-					
-					echo '</li>';
-				}
-				
-				echo '</ul>';
-			}
-			
-			// Show recommendations
-			if ( ! empty( $status['recommendations'] ) ) {
-				echo '<p><strong>' . esc_html__( 'Recommendations:', 'rank-math-api-manager' ) . '</strong></p>';
-				echo '<ul>';
-				
-				foreach ( $status['recommendations'] as $recommendation ) {
-					echo '<li>' . esc_html( $recommendation ) . '</li>';
-				}
-				
-				echo '</ul>';
-			}
-			
-			echo '<p>' . esc_html__( 'Rank Math API Manager functionality is currently disabled until all dependencies are met.', 'rank-math-api-manager' ) . '</p>';
-			echo '</div>';
-		}
+
+		ob_start();
+		?>
+		<p><strong><?php echo esc_html__( 'Rank Math API Manager - Dependency Issues', 'rank-math-api-manager' ); ?></strong></p>
+		<?php if ( ! empty( $status['missing_plugins'] ) ) : ?>
+			<p><?php echo esc_html__( 'The following required plugins are missing or inactive:', 'rank-math-api-manager' ); ?></p>
+			<ul>
+				<?php foreach ( $status['missing_plugins'] as $plugin ) : ?>
+					<li>
+						<strong><?php echo esc_html( $plugin['name'] ); ?></strong> - <?php echo esc_html( $plugin['description'] ); ?>
+						<?php if ( $this->is_plugin_installed( $plugin['file'] ) ) : ?>
+							<a href="<?php echo esc_url( admin_url( 'plugins.php' ) ); ?>"><?php echo esc_html__( 'Activate Plugin', 'rank-math-api-manager' ); ?></a>
+						<?php else : ?>
+							<a href="<?php echo esc_url( $plugin['url'] ); ?>" target="_blank" rel="noreferrer noopener"><?php echo esc_html__( 'Install Plugin', 'rank-math-api-manager' ); ?></a>
+						<?php endif; ?>
+					</li>
+				<?php endforeach; ?>
+			</ul>
+		<?php endif; ?>
+		<?php if ( ! empty( $status['configuration_issues'] ) ) : ?>
+			<p><?php echo esc_html__( 'Configuration issues detected:', 'rank-math-api-manager' ); ?></p>
+			<ul>
+				<?php foreach ( $status['configuration_issues'] as $issue ) : ?>
+					<li>
+						<strong><?php echo esc_html( $issue['plugin'] ); ?></strong>: <?php echo esc_html( $issue['issue'] ); ?>
+						<?php if ( isset( $issue['debug'] ) && is_array( $issue['debug'] ) ) : ?>
+							<br>
+							<small>
+								<strong><?php echo esc_html__( 'Debug Info', 'rank-math-api-manager' ); ?>:</strong>
+								<?php
+								$debug_parts = array();
+
+								foreach ( $issue['debug'] as $key => $value ) {
+									$debug_parts[] = $key . ': ' . ( is_bool( $value ) ? ( $value ? 'Yes' : 'No' ) : $value );
+								}
+
+								echo esc_html( implode( ', ', $debug_parts ) );
+								?>
+							</small>
+						<?php endif; ?>
+					</li>
+				<?php endforeach; ?>
+			</ul>
+		<?php endif; ?>
+		<?php if ( ! empty( $status['recommendations'] ) ) : ?>
+			<p><strong><?php echo esc_html__( 'Recommendations:', 'rank-math-api-manager' ); ?></strong></p>
+			<ul>
+				<?php foreach ( $status['recommendations'] as $recommendation ) : ?>
+					<li><?php echo esc_html( $recommendation ); ?></li>
+				<?php endforeach; ?>
+			</ul>
+		<?php endif; ?>
+		<p><?php echo esc_html__( 'Rank Math API Manager functionality is currently disabled until all dependencies are met.', 'rank-math-api-manager' ); ?></p>
+		<?php
+
+		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Build the non-standard plugin folder notice markup.
+	 * Uses <details>/<summary> so steps are hidden by default and expand in place (no JS).
+	 *
+	 * @since 1.0.9.1
+	 * @return string
+	 */
+	private function get_folder_name_notice_markup() {
+		$current_directory = $this->get_plugin_directory_slug();
+		$releases_url      = 'https://github.com/Devora-AS/rank-math-api-manager/releases';
+
+		$summary   = esc_html__( 'Show reinstall steps', 'rank-math-api-manager' );
+		$step1     = esc_html__( 'Deactivate the plugin.', 'rank-math-api-manager' );
+		$step2     = esc_html__( 'Delete it (Plugins → Deactivate → Delete).', 'rank-math-api-manager' );
+		$step3     = sprintf(
+			/* translators: %s: link to GitHub Releases */
+			esc_html__( 'Download the latest rank-math-api-manager.zip from %s.', 'rank-math-api-manager' ),
+			'<a href="' . esc_url( $releases_url ) . '" target="_blank" rel="noreferrer noopener">' . esc_html__( 'GitHub Releases', 'rank-math-api-manager' ) . '</a>'
+		);
+		$step4     = esc_html__( 'Plugins → Add New → Upload Plugin → choose the ZIP → Install Now → Activate.', 'rank-math-api-manager' );
+		$after     = sprintf(
+			/* translators: %s: path segment rank-math-api-manager */
+			__( 'The plugin will then be in wp-content/plugins/%s/.', 'rank-math-api-manager' ),
+			'<code>rank-math-api-manager</code>'
+		);
+
+		$intro = sprintf(
+			'<p><strong>%1$s</strong>: %2$s %3$s <code>%4$s</code>. %5$s <code>rank-math-api-manager</code>.</p>',
+			esc_html__( 'Rank Math API Manager', 'rank-math-api-manager' ),
+			esc_html__( 'This site is running the plugin from a legacy folder name.', 'rank-math-api-manager' ),
+			esc_html__( 'Current folder:', 'rank-math-api-manager' ),
+			esc_html( $current_directory ),
+			esc_html__( 'New releases use the folder', 'rank-math-api-manager' )
+		);
+
+		$steps = sprintf(
+			'<ol class="rank-math-api-reinstall-steps"><li>%1$s</li><li>%2$s</li><li>%3$s</li><li>%4$s</li></ol><p>%5$s</p>',
+			$step1,
+			$step2,
+			$step3,
+			$step4,
+			$after
+		);
+
+		return $intro
+			. '<details class="rank-math-api-notice-details">'
+			. '<summary>' . $summary . '</summary>'
+			. '<div class="rank-math-api-notice-details-content">' . $steps . '</div>'
+			. '</details>';
+	}
+
+	/**
+	 * Build the telemetry privacy notice markup.
+	 *
+	 * @since 1.0.9.1
+	 * @return string
+	 */
+	private function get_telemetry_notice_markup() {
+		$privacy_doc = 'https://github.com/devora-as/rank-math-api-manager/blob/main/docs/telemetry-and-privacy.md';
+
+		return sprintf(
+			'<p><strong>%1$s</strong>: %2$s</p><p>%3$s</p><p>%4$s <a href="%5$s" target="_blank" rel="noreferrer noopener">%6$s</a>.</p>',
+			esc_html__( 'Rank Math API Manager', 'rank-math-api-manager' ),
+			esc_html__( 'Anonymous telemetry is enabled to help Devora validate update health and compatibility.', 'rank-math-api-manager' ),
+			esc_html__( 'The plugin sends only the plugin slug, plugin version, WordPress version, PHP version, event type, timestamp, and an anonymous site ID. No site URL, email addresses, usernames, SEO content, or authentication data is sent.', 'rank-math-api-manager' ),
+			esc_html__( 'You can keep it enabled or disable it for this site at any time. See the full privacy note in', 'rank-math-api-manager' ),
+			esc_url( $privacy_doc ),
+			esc_html__( 'Telemetry and Privacy', 'rank-math-api-manager' )
+		);
 	}
 
 	/**
@@ -567,15 +1118,8 @@ class Rank_Math_API_Manager_Extended {
 			add_action( 'admin_init', function() {
 				$this->check_dependencies();
 			});
-			
-			// Show success notice
-			add_action( 'admin_notices', function() {
-				echo '<div class="notice notice-success is-dismissible">';
-				echo '<p><strong>' . esc_html__( 'Rank Math API Manager', 'rank-math-api-manager' ) . '</strong>: ';
-				echo esc_html__( 'Dependencies are now met! Plugin functionality is enabled.', 'rank-math-api-manager' );
-				echo '</p>';
-				echo '</div>';
-			});
+
+			$this->queue_notice_event( 'dependency_restored' );
 		}
 	}
 
@@ -600,15 +1144,8 @@ class Rank_Math_API_Manager_Extended {
 		if ( $is_dependency ) {
 			// Re-check dependencies
 			$this->check_dependencies();
-			
-			// Show warning notice
-			add_action( 'admin_notices', function() {
-				echo '<div class="notice notice-warning is-dismissible">';
-				echo '<p><strong>' . esc_html__( 'Rank Math API Manager', 'rank-math-api-manager' ) . '</strong>: ';
-				echo esc_html__( 'A required dependency has been deactivated. Plugin functionality is now disabled.', 'rank-math-api-manager' );
-				echo '</p>';
-				echo '</div>';
-			});
+
+			$this->queue_notice_event( 'dependency_deactivated' );
 		}
 	}
 
@@ -616,8 +1153,9 @@ class Rank_Math_API_Manager_Extended {
 	 * Enqueue admin scripts and styles
 	 */
 	public function enqueue_admin_scripts($hook) {
-		// Only load on our admin pages
-		if (strpos($hook, 'rank-math-api') === false) {
+		$allowed_hooks = array( 'plugins.php', 'index.php' );
+
+		if ( false === strpos( $hook, 'rank-math-api' ) && ! in_array( $hook, $allowed_hooks, true ) ) {
 			return;
 		}
 
@@ -635,12 +1173,133 @@ class Rank_Math_API_Manager_Extended {
 			array(),
 			RANK_MATH_API_VERSION
 		);
+	}
 
-		// Localize script with AJAX URL and nonce
-		wp_localize_script('rank-math-api-admin', 'rankMathApi', array(
-			'ajaxUrl' => admin_url('admin-ajax.php'),
-			'nonce' => wp_create_nonce('rank_math_api_update_nonce')
-		));
+	/**
+	 * Prepare plugin activation state for telemetry and notice handling.
+	 *
+	 * @since 1.0.9.1
+	 */
+	public function prepare_plugin_activation() {
+		$this->ensure_telemetry_site_id();
+		$this->schedule_telemetry_heartbeat();
+		$this->send_telemetry_event( 'activate' );
+	}
+
+	/**
+	 * Handle telemetry and scheduling cleanup when the plugin is deactivated.
+	 *
+	 * @since 1.0.9.1
+	 */
+	public function handle_plugin_deactivation_cleanup() {
+		$this->send_telemetry_event( 'deactivate' );
+		wp_clear_scheduled_hook( 'rank_math_api_telemetry_heartbeat' );
+	}
+
+	/**
+	 * Send the scheduled telemetry heartbeat if telemetry is still enabled.
+	 *
+	 * @since 1.0.9.1
+	 */
+	public function send_scheduled_telemetry() {
+		$last_run = (int) get_option( 'rank_math_api_heartbeat_last_run', 0 );
+
+		if ( $last_run && ( time() - $last_run ) < ( DAY_IN_SECONDS / 2 ) ) {
+			return;
+		}
+
+		if ( $this->send_telemetry_event( 'heartbeat' ) ) {
+			update_option( 'rank_math_api_heartbeat_last_run', time(), false );
+		}
+	}
+
+	/**
+	 * Send a privacy-safe telemetry event.
+	 *
+	 * @since 1.0.9.1
+	 * @param string $event_type Telemetry event type.
+	 * @return bool
+	 */
+	public function send_telemetry_event( $event_type ) {
+		$allowed_events = array( 'activate', 'deactivate', 'heartbeat' );
+
+		if ( ! in_array( $event_type, $allowed_events, true ) ) {
+			return false;
+		}
+
+		$settings = $this->get_telemetry_settings();
+
+		if ( empty( $settings['enabled'] ) ) {
+			return false;
+		}
+
+		$endpoint = $this->get_telemetry_endpoint();
+
+		if ( ! $this->is_valid_devora_api_url( $endpoint, '/v1/telemetry' ) ) {
+			return false;
+		}
+
+		$payload = array(
+			'site_id'        => $this->ensure_telemetry_site_id(),
+			'plugin_slug'    => 'rank-math-api-manager',
+			'plugin_version' => RANK_MATH_API_VERSION,
+			'wp_version'     => get_bloginfo( 'version' ),
+			'php_version'    => PHP_VERSION,
+			'event_type'     => $event_type,
+			'timestamp'      => gmdate( 'c' ),
+		);
+
+		$response = wp_remote_post(
+			$endpoint,
+			array(
+				'timeout'     => 5,
+				'redirection' => 0,
+				'blocking'    => false,
+				'headers'     => array(
+					'Content-Type' => 'application/json; charset=' . get_bloginfo( 'charset' ),
+				),
+				'body'        => wp_json_encode( $payload ),
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			$this->log_debug( 'Telemetry request failed for event: ' . $event_type );
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Get the fixed telemetry endpoint.
+	 *
+	 * @since 1.0.9.1
+	 * @return string
+	 */
+	private function get_telemetry_endpoint() {
+		return 'https://updates.devora.no/v1/telemetry';
+	}
+
+	/**
+	 * Validate a Devora API URL before sending data to it.
+	 *
+	 * @since 1.0.9.1
+	 * @param string $url           Candidate URL.
+	 * @param string $expected_path Expected leading path.
+	 * @return bool
+	 */
+	private function is_valid_devora_api_url( $url, $expected_path ) {
+		$parts = wp_parse_url( $url );
+
+		if ( empty( $parts['scheme'] ) || empty( $parts['host'] ) || empty( $parts['path'] ) ) {
+			return false;
+		}
+
+		if ( 'https' !== strtolower( $parts['scheme'] ) || 'updates.devora.no' !== strtolower( $parts['host'] ) ) {
+			return false;
+		}
+
+		return 0 === strpos( strtolower( $parts['path'] ), strtolower( $expected_path ) );
 	}
 
 	/**
@@ -1079,9 +1738,10 @@ class Rank_Math_API_Manager_Extended {
 			return false;
 		}
 
-		$expected_path = '/' . $this->github_repo['owner'] . '/' . $this->github_repo['repo'] . '/releases/download/';
+		$expected_path = strtolower( '/' . $this->github_repo['owner'] . '/' . $this->github_repo['repo'] . '/releases/download/' );
+		$actual_path   = strtolower( $parts['path'] );
 
-		return 0 === strpos( $parts['path'], $expected_path );
+		return 0 === strpos( $actual_path, $expected_path );
 	}
 }
 
@@ -1117,16 +1777,9 @@ function rank_math_api_manager_activate() {
 	if ( method_exists( $plugin_instance, 'check_dependencies' ) ) {
 		$plugin_instance->check_dependencies();
 	}
-	
-	// Show admin notice if dependencies are missing
-	if ( method_exists( $plugin_instance, 'are_dependencies_met' ) && ! $plugin_instance->are_dependencies_met() ) {
-		add_action( 'admin_notices', function() {
-			echo '<div class="notice notice-warning is-dismissible">';
-			echo '<p><strong>' . esc_html__( 'Rank Math API Manager', 'rank-math-api-manager' ) . '</strong>: ';
-			echo esc_html__( 'Plugin activated but required dependencies are missing. Please install and activate Rank Math SEO plugin for full functionality.', 'rank-math-api-manager' );
-			echo '</p>';
-			echo '</div>';
-		});
+
+	if ( method_exists( $plugin_instance, 'prepare_plugin_activation' ) ) {
+		$plugin_instance->prepare_plugin_activation();
 	}
 }
 
@@ -1138,6 +1791,12 @@ function rank_math_api_manager_activate() {
  * @since 1.0.0
  */
 function rank_math_api_manager_deactivate() {
+	$plugin_instance = Rank_Math_API_Manager_Extended::get_instance();
+
+	if ( method_exists( $plugin_instance, 'handle_plugin_deactivation_cleanup' ) ) {
+		$plugin_instance->handle_plugin_deactivation_cleanup();
+	}
+
 	// Clear scheduled events
 	wp_clear_scheduled_hook('rank_math_api_update_check');
 	
@@ -1163,14 +1822,31 @@ function rank_math_api_manager_uninstall() {
 	// Remove all plugin options
 	delete_option('rank_math_api_activated');
 	delete_option('rank_math_api_dependencies_status');
+	delete_option('rank_math_api_dismissed_notices');
+	delete_option('rank_math_api_notice_events');
 	delete_option('rank_math_api_last_github_check');
 	delete_option('rank_math_api_github_token');
+	delete_option('rank_math_api_telemetry_settings');
+	delete_option('rank_math_api_heartbeat_last_run');
 	
 	// Remove transients
 	delete_transient('rank_math_api_github_release');
 	
 	// Clear any scheduled events
 	wp_clear_scheduled_hook('rank_math_api_update_check');
+	wp_clear_scheduled_hook('rank_math_api_telemetry_heartbeat');
+
+	global $wpdb;
+
+	if ( isset( $wpdb->usermeta ) ) {
+		$meta_like = $wpdb->esc_like( 'rank_math_api_dismissed_' ) . '%';
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->usermeta} WHERE meta_key LIKE %s",
+				$meta_like
+			)
+		);
+	}
 }
 
 // Uninstall hook

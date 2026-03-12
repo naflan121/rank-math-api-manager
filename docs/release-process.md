@@ -9,6 +9,7 @@ This document outlines the complete process for releasing new versions of the Ra
 ### **Automated Release Process (Recommended)**
 
 The plugin uses GitHub Actions to automatically create production-ready ZIP files when releases are published.
+The workflow also supports a manual recovery path via `workflow_dispatch` for an existing tag/release. This is important if a release was published before a workflow fix was merged, because the original release event may have executed an older workflow definition from the tagged commit.
 
 ### **Manual Release Process (Backup)**
 
@@ -24,17 +25,17 @@ Manual process for creating releases when automation is not available.
 
    ```bash
    # Update in rank-math-api-manager.php
-   * Version: 1.0.9
+   * Version: 1.0.9.1
 
    # Update in rank-math-api-manager.php constant
-   define('RANK_MATH_API_VERSION', '1.0.9');
+   define('RANK_MATH_API_VERSION', '1.0.9.1');
    ```
 
 2. **Update Documentation**
 
    ```bash
    # Update CHANGELOG.md with new version
-   ## [1.0.9] - 2025-08-01
+   ## [1.0.9.1] - 2026-03-12
    ### Added
    - New features...
 
@@ -45,7 +46,7 @@ Manual process for creating releases when automation is not available.
 3. **Commit Changes**
    ```bash
    git add .
-   git commit -m "Prepare release v1.0.9"
+   git commit -m "Prepare release v1.0.9.1"
    git push origin main
    ```
 
@@ -59,8 +60,8 @@ Manual process for creating releases when automation is not available.
 2. **Configure Release**
 
    ```
-   Tag version: v1.0.9
-   Release title: Version 1.0.9 - [Brief Description]
+   Tag version: v1.0.9.1
+   Release title: Version 1.0.9.1 - [Brief Description]
 
    Description:
    ## What's Changed
@@ -107,12 +108,33 @@ The GitHub Action will automatically:
    - ZIP file automatically attached as `rank-math-api-manager.zip`
    - Available for WordPress auto-update system
 
+### **Step 3b: Recovery for an Existing Published Release**
+
+If a release already exists but the ZIP asset is missing or the original workflow run failed:
+
+1. Go to **Actions -> Build and Release Plugin**
+2. Click **Run workflow**
+3. Enter the existing tag (for example `v1.0.9.1`)
+4. Run the workflow from `main`
+
+The recovery workflow will:
+
+- resolve the requested tag
+- check out the tagged code
+- rebuild `rank-math-api-manager.zip`
+- upload or overwrite the asset on the existing GitHub release
+
+This avoids rewriting the tag while still ensuring the release gets the exact production ZIP expected by the WordPress updater.
+
 ### **Step 4: Verify Release**
 
 1. **Check GitHub Release Page**
 
    - Verify ZIP asset is attached
+   - Confirm the asset name is exactly `rank-math-api-manager.zip`
    - Download and test ZIP structure
+   - Confirm the top-level folder is exactly `rank-math-api-manager/`
+   - Confirm the main plugin file path is exactly `rank-math-api-manager/rank-math-api-manager.php`
 
 2. **Test Auto-Update System**
    - Check WordPress site with older version
@@ -140,6 +162,9 @@ The GitHub Action will automatically:
    # Create clean copy
    mkdir temp-release
    cp -r "Rank Math API Manager-plugin" temp-release/rank-math-api-manager
+
+   # Or if your local folder is already named correctly:
+   # cp -r rank-math-api-manager temp-release/
 
    # Remove development files
    cd temp-release/rank-math-api-manager
@@ -261,10 +286,13 @@ rm -f rank-math-api-manager/.gitignore 2>/dev/null || true
    - Check repository permissions
    - Verify GITHUB_TOKEN has correct permissions
    - Check action logs for specific errors
+   - If the failed run came from an already-published tag, do not assume re-publishing the same release will use the newest workflow from `main`
+   - Use the manual recovery workflow with the release tag to rebuild and upload `rank-math-api-manager.zip`
 
 2. **ZIP Structure Incorrect**
 
-   - Verify folder name is `rank-math-api-manager`
+   - Verify folder name **inside** the ZIP is exactly **`rank-math-api-manager`** (lowercase, hyphens). The GitHub Action produces this; manual builds must use the same name.
+   - **Important:** The v1.0.8 release ZIP (July 2025) was built with folder **`Rank Math API Manager-plugin-kopi`** inside. Sites that installed from that ZIP have the plugin in that folder. New releases use **`rank-math-api-manager`**. Update notifications still work (plugin uses `plugin_basename()`). For migration to the correct folder name, see **docs/troubleshooting.md** → "Plugin Updates and Folder Name".
    - Check for proper file exclusions
    - Ensure main plugin file is in root of plugin folder
 
@@ -272,6 +300,8 @@ rm -f rank-math-api-manager/.gitignore 2>/dev/null || true
    - Verify ZIP is named exactly `rank-math-api-manager.zip`
    - Check that release is published (not draft)
    - Ensure version number in plugin file matches tag
+   - Confirm the GitHub release actually has the ZIP asset attached
+   - Remember that WordPress update checks may be delayed by cached transients
 
 ### **Emergency Release Process**
 
@@ -339,4 +369,4 @@ For critical release issues:
 ---
 
 **Last Updated**: March 2026  
-**Version**: 1.0.9
+**Version**: 1.0.9.1

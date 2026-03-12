@@ -89,12 +89,23 @@ jobs:
           echo "📦 ZIP Contents:"
           unzip -l rank-math-api-manager.zip | head -20
 
+          if ! unzip -Z1 rank-math-api-manager.zip | rg '^rank-math-api-manager/$'; then
+            echo "❌ ZIP root folder is missing or incorrectly named"
+            exit 1
+          fi
+
+          if ! unzip -Z1 rank-math-api-manager.zip | rg '^rank-math-api-manager/rank-math-api-manager\.php$'; then
+            echo "❌ Main plugin file is missing from the expected path"
+            exit 1
+          fi
+
           # Verify forbidden local artifacts are not present
           if unzip -Z1 rank-math-api-manager.zip | grep -E '(^|/)\.cursor/|(^|/)agent-skills/|\.code-workspace$|(^|/)transcripts/|(^|/)agent-transcripts/|(^|/)local-notes/|(^|/)\.notes/'; then
             echo "❌ Forbidden local artifacts detected in release ZIP"
             exit 1
           fi
 
+          echo "✅ ZIP structure verified: root folder and main plugin file are correct"
           echo "✅ Packaging exclusions verified: no local agent artifacts in release ZIP"
 
       - name: Upload Release Asset

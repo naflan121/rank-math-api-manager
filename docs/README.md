@@ -17,6 +17,9 @@ Welcome to the comprehensive documentation for the Rank Math API Manager plugin.
 - **[Integration Guide](integration-guide.md)** - Step-by-step integration with n8n, Zapier, Make, and custom applications
 - **[Troubleshooting Guide](troubleshooting.md)** - Common issues and solutions
 - **[Security Guide](security.md)** - Security best practices and configuration
+- **[Telemetry and Privacy](telemetry-and-privacy.md)** - Anonymous telemetry payload, opt-out flow, and cleanup behavior
+- **[Verification Matrix](verification-matrix.md)** - Install, update, notice, and telemetry validation checklist
+- **[Devora Update API Shadow Rollout](devora-update-api-shadow-rollout.md)** - Planned `updates.devora.no` shadow-mode architecture
 
 ### 📋 Reference
 
@@ -126,7 +129,7 @@ This documentation is updated with each plugin release. Check the [Changelog](..
 
 ### Version Information
 
-- **Current Version**: 1.0.9
+- **Current Version**: 1.0.9.1
 - **Last Updated**: March 2026
 - **WordPress Compatibility**: 5.0+
 - **PHP Compatibility**: 7.4+
@@ -149,4 +152,4 @@ This documentation is updated with each plugin release. Check the [Changelog](..
 ---
 
 **Last Updated**: March 2026  
-**Version**: 1.0.9
+**Version**: 1.0.9.1

@@ -10,7 +10,7 @@
 ## 📋 Overview
 
 **Plugin Name**: Rank Math API Manager  
-**Version**: 1.0.9  
+**Version**: 1.0.9.1  
 **Author**: [Devora AS](https://devora.no/)  
 **Description**: WordPress extension that exposes REST API endpoints to update [Rank Math](https://rankmath.com/) SEO metadata programmatically.
 
@@ -72,6 +72,10 @@ Replace `USERNAME` and `APPLICATION_PASSWORD` with your WordPress username and [
 2. Activate the plugin in WordPress admin panel
 3. Verify that the plugin is active
 
+### 1.1 Update packaging note
+
+Current releases are packaged as `rank-math-api-manager.zip` and extract to the folder `rank-math-api-manager/`. If your site still runs an older install from `Rank Math API Manager-plugin-kopi`, the plugin will continue to work and can still detect updates, but the plugin now surfaces an admin notice with a recommended one-time reinstall path to normalize the folder name.
+
 ### 2. Permissions
 
 The plugin requires users to be authenticated and able to edit the specific target post or product via `current_user_can( 'edit_post', $post_id )`.
@@ -119,6 +123,19 @@ This plugin is specifically designed to work with Devora's n8n workflow "Write w
 - Validates that `post_id` exists
 - Sanitizes SEO text fields with `wp_filter_nohtml_kses()`
 - Validates URLs with `esc_url_raw()`
+
+## 📡 Telemetry and Privacy
+
+Version `1.0.9.1` introduces privacy-documented anonymous telemetry groundwork for update health monitoring. The plugin sends only:
+
+- Anonymous site ID
+- Plugin slug and version
+- WordPress version
+- PHP version
+- Event type (`activate`, `deactivate`, `heartbeat`)
+- Timestamp
+
+It does **not** send site URL, emails, usernames, SEO content, or authentication data. Telemetry is enabled by default for the documented minimal payload and can be disabled from the admin notice shown to site administrators. See [`docs/telemetry-and-privacy.md`](docs/telemetry-and-privacy.md) for the full policy.
 
 ## 🔧 Technical Details
 
@@ -371,7 +388,10 @@ A: No, the plugin does not log sensitive data.
 A: The plugin can be updated via the WordPress admin panel or by manually uploading a new version.
 
 **Q: Are there automatic updates?**
-A: Yes! The plugin includes a complete WordPress-native auto-update system that checks for new releases on GitHub and provides update notifications just like WordPress.org plugins. Users can enable/disable automatic updates and view release details.
+A: Yes. The plugin integrates with the native WordPress update UI by checking the latest published GitHub release and its `rank-math-api-manager.zip` asset. Sites running `1.0.8` or `1.0.9` should see `1.0.9.1` as an available update in **WP Admin -> Plugins** once WordPress refreshes plugin updates, as long as the release is published, the ZIP asset exists, and the site can reach the GitHub API. Because release data is cached for up to 1 hour and GitHub checks are rate-limited to 5 minutes, the notice may not appear immediately.
+
+**Q: What if no update appears yet?**
+A: Confirm that the GitHub release is published and includes `rank-math-api-manager.zip`, then clear the plugin update transient and the plugin's GitHub release/rate-limit cache before triggering **Dashboard -> Updates -> Check Again**. If your install still uses `Rank Math API Manager-plugin-kopi`, that folder name does not block update detection, but the admin notice will recommend a one-time reinstall to normalize the folder.
 
 **Q: How do I check if the plugin is working?**
 A: Test the API endpoint with a simple POST request to `/wp-json/rank-math-api/v1/update-meta`.

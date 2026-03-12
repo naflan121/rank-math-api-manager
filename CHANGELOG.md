@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Added a manual release recovery workflow for existing published tags so `rank-math-api-manager.zip` can be rebuilt and re-uploaded without moving the tag.
+
+### Documentation
+
+- Clarified the release recovery process and the conditions required for WordPress update notifications to appear.
+
+## [1.0.9.1] - 2026-03-12
+
+### Fixed
+
+- Made GitHub release download URL validation case-insensitive so update detection keeps working when GitHub returns mixed-case organization paths.
+- Added release ZIP verification gates for the expected folder name and main plugin file path.
+
+### Added
+
+- Introduced a reusable admin notice renderer for dependency, folder-normalization, and operator guidance notices.
+- Added a non-standard plugin-folder warning to help sites migrate from legacy `Rank Math API Manager-plugin-kopi` installs when desired.
+- Added privacy-documented anonymous telemetry with opt-out controls, scheduled heartbeat support, and uninstall cleanup.
+
+### Documentation
+
+- Added telemetry/privacy documentation, Devora Update API shadow-rollout notes, and an end-to-end verification matrix.
+
 ## [1.0.9] - 2026-03-11
 
 ### Changed
@@ -89,18 +116,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added capability checks for all admin functions
 - Secure API communication with GitHub
 - Rate limiting for update checks
-
-## [Unreleased]
-
-### Changed
-
-- Improved error handling and validation
-- Enhanced security measures
-- Better integration with n8n workflows
-
-### Fixed
-
-- Various bug fixes and performance improvements
 
 ## [1.0.6] -
 

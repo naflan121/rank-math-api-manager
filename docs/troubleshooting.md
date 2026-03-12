@@ -22,7 +22,7 @@ Before diving into specific issues, run through this checklist:
 
 **Error Message**: `"Authentication required."`
 
-#### Possible Causes:
+####  Possible Causes:
 
 1. **Invalid credentials**
 2. **Missing Application Password**
@@ -198,11 +198,9 @@ define('WP_MEMORY_LIMIT', '256M');
 **Solutions**:
 
 1. **Check Credential Configuration**
-
-   - Verify username and Application Password
-   - Ensure no extra spaces or characters
-   - Test credentials manually first
-
+  - Verify username and Application Password
+  - Ensure no extra spaces or characters
+  - Test credentials manually first
 2. **Update n8n Node Configuration**
 
 ```json
@@ -213,7 +211,7 @@ define('WP_MEMORY_LIMIT', '256M');
 }
 ```
 
-3. **Test with Simple Request**
+1. **Test with Simple Request**
 
 ```json
 {
@@ -252,7 +250,7 @@ return {
 };
 ```
 
-2. **Add Error Handling**
+1. **Add Error Handling**
 
 ```javascript
 // Add Code node after HTTP Request
@@ -311,7 +309,7 @@ try {
 }
 ```
 
-2. **Validate Input Data**
+1. **Validate Input Data**
 
 ```javascript
 // Validate required fields
@@ -368,6 +366,86 @@ session.mount('https://', adapter)
 response = session.post(url, headers=headers, data=data)
 ```
 
+## 🔄 Plugin Updates and Folder Name
+
+### Update notification not showing (v1.0.8/1.0.9 → v1.0.9.1+)
+
+If you are on **v1.0.8** or **v1.0.9** and do not see "Update available":
+
+1. **Confirm the release has the ZIP asset**
+  Open the [latest release](https://github.com/Devora-AS/rank-math-api-manager/releases) and ensure `**rank-math-api-manager.zip`** is listed under Assets.
+2. **Clear update caches and re-check**
+  - Go to **Dashboard → Updates** and click **"Check Again"** (or open `wp-admin/update-core.php?force-check=1`).  
+  - Optional (WP-CLI):  
+  `wp option delete _site_transient_update_plugins`  
+  `wp transient delete rank_math_api_github_release`  
+  `wp option delete rank_math_api_last_github_check`  
+  Then run **Check Again** or: `wp cron event run wp_update_plugins`
+3. **Rate limiting**
+  The plugin allows at most one GitHub check every 5 minutes. If you ran a check recently, wait a few minutes or clear `rank_math_api_last_github_check` as above.
+4. **Server access**
+  Ensure the server can reach `api.github.com` and `github.com` (no firewall/proxy blocking).
+
+### Wrong plugin folder name: "Rank Math API Manager-plugin-kopi"
+
+The **v1.0.8 release ZIP** (sha256: `ff6979835f9153f2becd3ef997cdbf2f3feb15c147b642c4c39c17fe1a3da62d`) contained a top-level folder named `**Rank Math API Manager-plugin-kopi`** instead of `**rank-math-api-manager**`. If you installed from that ZIP, your plugin lives in:
+
+`wp-content/plugins/Rank Math API Manager-plugin-kopi/`
+
+**Does this break updates?**  
+No. The plugin uses `plugin_basename()` so the update checker works with whatever folder name you have. You should still see "Update available" when a newer version is released, as long as caches are cleared and the release has the ZIP asset.
+
+**Should I fix the folder name?**  
+The correct folder name is `**rank-math-api-manager`** (lowercase, hyphens). New releases are built with that folder inside the ZIP. You can either:
+
+- **Option A – One-time reinstall (recommended)**  
+  1. Deactivate the plugin.
+  2. Delete it (Plugins → Deactivate → Delete).
+  3. Download the latest **rank-math-api-manager.zip** from [GitHub Releases](https://github.com/Devora-AS/rank-math-api-manager/releases).
+  4. Plugins → Add New → Upload Plugin → choose the ZIP → Install Now → Activate.
+  The plugin will then be in `wp-content/plugins/rank-math-api-manager/`.
+- **Option B – Leave as-is**  
+You can keep the current folder name. Updates will still work. If after an update you ever see two entries (e.g. one "Rank Math API Manager-plugin-kopi" and one "rank-math-api-manager"), deactivate and delete the old one.
+
+**New installs**  
+All releases built by the current GitHub Action use the folder `**rank-math-api-manager`** inside the ZIP, so new installs get the correct name.
+
+### Telemetry notice or opt-out behavior
+
+Version **1.0.9.1** adds a reusable admin notice system and a privacy-documented telemetry notice for administrators.
+
+**What is sent?**
+
+- Anonymous site ID
+- Plugin slug and version
+- WordPress version
+- PHP version
+- Event type (`activate`, `deactivate`, `heartbeat`)
+- Timestamp
+
+**What is not sent?**
+
+- Site URL
+- Email addresses
+- Usernames
+- SEO content
+- Authentication data
+
+**How to disable it**
+
+1. Open **Plugins** or **Dashboard** as an administrator.
+2. Find the **Rank Math API Manager** telemetry notice.
+3. Click **Disable anonymous telemetry**.
+
+You can also remove the stored setting manually:
+
+```bash
+wp option get rank_math_api_telemetry_settings
+wp option patch update rank_math_api_telemetry_settings enabled 0
+```
+
+---
+
 ## 🛠️ Advanced Troubleshooting
 
 ### Debug Mode Setup
@@ -423,7 +501,7 @@ add_action('rest_api_init', function() {
 define('SAVEQUERIES', true);
 ```
 
-2. **Check Server Resources**
+1. **Check Server Resources**
 
 ```bash
 # Monitor server resources
@@ -432,7 +510,7 @@ free -h
 df -h
 ```
 
-3. **Enable Caching**
+1. **Enable Caching**
 
 ```php
 // Add caching headers
@@ -470,7 +548,7 @@ add_action('rest_api_init', function() {
 });
 ```
 
-2. **Log Security Events**
+1. **Log Security Events**
 
 ```php
 // Log failed authentication attempts
@@ -497,7 +575,7 @@ add_action('rest_api_init', function() {
             return [
                 'status' => 'healthy',
                 'timestamp' => current_time('mysql'),
-                'version' => '1.0.9'
+                'version' => '1.0.9.1'
             ];
         },
         'permission_callback' => '__return_true'
@@ -552,24 +630,20 @@ tail -f /var/log/nginx/error.log | grep "your-domain.com"
 ### Before Contacting Support
 
 1. **Collect Information**:
-
-   - WordPress version
-   - Plugin version
-   - PHP version
-   - Server environment
-   - Complete error messages
-   - Request/response data
-
+  - WordPress version
+  - Plugin version
+  - PHP version
+  - Server environment
+  - Complete error messages
+  - Request/response data
 2. **Test with Minimal Setup**:
-
-   - Deactivate other plugins
-   - Switch to default theme
-   - Test with basic cURL request
-
+  - Deactivate other plugins
+  - Switch to default theme
+  - Test with basic cURL request
 3. **Check Known Issues**:
-   - Review GitHub issues
-   - Check documentation
-   - Search community forums
+  - Review GitHub issues
+  - Check documentation
+  - Search community forums
 
 ### Contact Information
 
@@ -604,4 +678,4 @@ Environment: [Local/Staging/Production]
 ---
 
 **Last Updated**: March 2026  
-**Version**: 1.0.9
+**Version**: 1.0.9.1
